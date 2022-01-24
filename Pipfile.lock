@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "0f5946c887e8466a0f3623a272a8d36933151d1b5d6eb8fafa494af4dab98c33"
+            "sha256": "6a57dfcafa1aa1babacb774df817f142ee6f6bad024aadafc16828ac3b8a788a"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -168,6 +168,14 @@
             "markers": "python_version >= '3.7'",
             "version": "==23.5.0"
         },
+        "micropython-async-websocket-client": {
+            "hashes": [
+                "sha256:bd3421915dfca7b39df321a3d16b1030615257706c4836f2a9c348f635d52cd2",
+                "sha256:def2d88027bd85078d62caf6374949c91e2986f1d3b06fc0e04973acd4f45717"
+            ],
+            "index": "pypi",
+            "version": "==0.1.1"
+        },
         "packaging": {
             "hashes": [
                 "sha256:dd47c42927d89ab911e606518907cc2d3a1f38bbd026385970643f9c5b8ecfeb",
@@ -250,7 +258,7 @@
                 "sha256:1e61c37477a1626458e36f7b1d82aa5c9b094fa4802892072e49de9c60c4c926",
                 "sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254"
             ],
-            "markers": "python_version >= '2.7' and python_version not in '3.0, 3.1, 3.2'",
+            "markers": "python_version >= '2.7' and python_version not in '3.0, 3.1, 3.2, 3.3'",
             "version": "==1.16.0"
         },
         "tqdm": {
