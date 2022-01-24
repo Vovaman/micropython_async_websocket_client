@@ -31,7 +31,7 @@ Development and tests were done based on [esp32-20220117-v1.18.bin](https://micr
 >>> wifi.active(1)
 >>> wifi.connect(<name_of_your_wifi_net>, <wifi_password>)
 >>> import upip
->>> upip.install('micropython_async_websocket_client')
+>>> upip.install('micropython-async-websocket-client')
 ```
 
 All needed dependencies are in esp32-20220117-v1.18.bin.

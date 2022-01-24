@@ -14,11 +14,11 @@ with open('README.md') as readme_file:
 with open('HISTORY.md') as history_file:
     HISTORY = history_file.read()
 
-install_requires = []
+install_requires = ['uasyncio']
 
 setuptools.setup(
     name="micropython-async_websocket_client",
-    version="0.1.4",
+    version="0.1.6",
     description='Asynchronous websocket client for ESP32 controller.',
     long_description_content_type="text/markdown",
     long_description=README + '\n\n' + HISTORY,
@@ -34,7 +34,5 @@ setuptools.setup(
         "License :: OSI Approved :: Apache Software License",
         "Operating System :: OS Independent",
     ],
-    package_dir={"async_websocket_client": "async_websocket_client"},
-    packages=["async_websocket_client"]
-    
+    packages=["async_websocket_client"]    
 )
