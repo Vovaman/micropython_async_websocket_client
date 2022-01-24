@@ -28,7 +28,7 @@ CLOSE_BAD_CONDITION = const(1011)
 URL_RE = re.compile(r'ws://([A-Za-z0-9\-\.]+)(?:\:([0-9]+))?(/.+)?')
 URI = namedtuple('URI', ('host', 'port', 'path'))
 
-class AsyncWebSocketClient:
+class AsyncWebsocketClient:
     def __init__(self, ms_delay_for_read: int = 5):
         self._open = False
         self.delay_read = ms_delay_for_read
