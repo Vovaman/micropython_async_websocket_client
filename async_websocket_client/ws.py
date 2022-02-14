@@ -70,7 +70,7 @@ class AsyncWebsocketClient:
     #async def a_write(self, buf):
 
 
-    async def handshake(self, uri):
+    async def handshake(self, uri, headers=[]):
 
         self.sock = socket.socket()
         self.uri = self.urlparse(uri)
@@ -94,6 +94,8 @@ class AsyncWebsocketClient:
         send_header(b'Sec-WebSocket-Key: %s', key)
         send_header(b'Sec-WebSocket-Version: 13')
         send_header(b'Origin: http://localhost')
+        for key, value in headers:
+            send_header(b'%s: %s', key, value)
         send_header(b'')
 
         line = await self.a_readline()
