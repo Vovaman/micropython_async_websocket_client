@@ -48,19 +48,13 @@ class AsyncWebsocketClient:
         """Parse ws or wss:// URLs"""
         match = URL_RE.match(uri)
         if match:
-            protocol = match.group(1)
-            host = match.group(2)
-            port = match.group(3)
-            path = match.group(4)
+            protocol, host, port, path = match.group(1), match.group(2), match.group(3), match.group(4)
 
-            if protocol == 'wss':
-                if port is None:
-                    port = 443
-            elif protocol == 'ws':
-                if port is None:
-                    port = 80
-            else:
+            if protocol not in ['ws', 'wss']:
                 raise ValueError('Scheme {} is invalid'.format(protocol))
+
+            if port is None:
+                port = (80, 443)[protocol == 'wss']
 
             return URI(protocol, host, int(port), path)
 
@@ -108,6 +102,10 @@ class AsyncWebsocketClient:
             hostname=self.uri.hostname,
             port=self.uri.port)
         )
+
+        for key, value in headers:
+            send_header(b'%s: %s', key, value)
+
         send_header(b'')
 
         line = await self.a_readline()
