@@ -5,7 +5,7 @@ import urandom as random
 from ucollections import namedtuple
 import ure as re
 import ustruct as struct
-
+import ussl
 # Opcodes
 OP_CONT = const(0x0)
 OP_TEXT = const(0x1)
@@ -25,15 +25,17 @@ CLOSE_TOO_BIG = const(1009)
 CLOSE_MISSING_EXTN = const(1010)
 CLOSE_BAD_CONDITION = const(1011)
 
-URL_RE = re.compile(r'ws://([A-Za-z0-9\-\.]+)(?:\:([0-9]+))?(/.+)?')
-URI = namedtuple('URI', ('host', 'port', 'path'))
+
+URL_RE = re.compile(r'(wss|ws)://([A-Za-z0-9-\.]+)(?:\:([0-9]+))?(/.+)?')
+URI = namedtuple('URI', ('protocol', 'hostname', 'port', 'path'))
+
 
 class AsyncWebsocketClient:
     def __init__(self, ms_delay_for_read: int = 5):
         self._open = False
         self.delay_read = ms_delay_for_read
         self._lock_for_open = a.Lock()
-        
+
     async def open(self, new_val: bool = None):
         await self._lock_for_open.acquire()
         if new_val is not None:
@@ -43,14 +45,18 @@ class AsyncWebsocketClient:
         return to_return
 
     def urlparse(self, uri):
-        """Parse ws:// URLs"""
+        """Parse ws or wss:// URLs"""
         match = URL_RE.match(uri)
         if match:
-            host, port, path = match.group(1), match.group(2), match.group(3)
-            if port is None:
-                port = 80
+            protocol, host, port, path = match.group(1), match.group(2), match.group(3), match.group(4)
 
-            return URI(host, int(port), path)
+            if protocol not in ['ws', 'wss']:
+                raise ValueError('Scheme {} is invalid'.format(protocol))
+
+            if port is None:
+                port = (80, 443)[protocol == 'wss']
+
+            return URI(protocol, host, int(port), path)
 
     async def a_readline(self):
         line = None
@@ -59,7 +65,7 @@ class AsyncWebsocketClient:
             await a.sleep_ms(self.delay_read)
 
         return line
-    
+
     async def a_read(self, size: int = None):
         b = None
         while b is None:
@@ -67,19 +73,18 @@ class AsyncWebsocketClient:
             await a.sleep_ms(self.delay_read)
         return b
 
-    #async def a_write(self, buf):
-
-
     async def handshake(self, uri, headers=[]):
 
         self.sock = socket.socket()
         self.uri = self.urlparse(uri)
-        ai = socket.getaddrinfo(self.uri.host, self.uri.port)
+        ai = socket.getaddrinfo(self.uri.hostname, self.uri.port)
         addr = ai[0][4]
         self.sock.connect(addr)
         self.sock.setblocking(False)
+        if self.uri.protocol == 'wss':
+            self.sock = ussl.wrap_socket(self.sock)
         await self.open(False)
-        
+
         def send_header(header, *args):
             self.sock.write(header % args + '\r\n')
 
@@ -88,14 +93,19 @@ class AsyncWebsocketClient:
                                         for _ in range(16)))[:-1]
 
         send_header(b'GET %s HTTP/1.1', self.uri.path or '/')
-        send_header(b'Host: %s:%s', self.uri.host, self.uri.port)
+        send_header(b'Host: %s:%s', self.uri.hostname, self.uri.port)
         send_header(b'Connection: Upgrade')
         send_header(b'Upgrade: websocket')
         send_header(b'Sec-WebSocket-Key: %s', key)
         send_header(b'Sec-WebSocket-Version: 13')
-        send_header(b'Origin: http://localhost')
+        send_header(b'Origin: http://{hostname}:{port}'.format(
+            hostname=self.uri.hostname,
+            port=self.uri.port)
+        )
+
         for key, value in headers:
             send_header(b'%s: %s', key, value)
+
         send_header(b'')
 
         line = await self.a_readline()
@@ -116,7 +126,7 @@ class AsyncWebsocketClient:
 
         # Frame header
         byte1, byte2 = struct.unpack('!BB', await self.a_read(2))
-        
+
         # Byte 1: FIN(1) _(1) _(1) _(1) OPCODE(4)
         fin = bool(byte1 & 0x80)
         opcode = byte1 & 0x0f
@@ -138,7 +148,7 @@ class AsyncWebsocketClient:
         except MemoryError:
             # We can't receive this many bytes, close the socket
             self.close(code=CLOSE_TOO_BIG)
-            #await self._stream.drain()
+            # await self._stream.drain()
             return True, OP_CLOSE, None
 
         if mask:
@@ -189,8 +199,8 @@ class AsyncWebsocketClient:
         while await self.open():
             count += 1
             try:
-                fin, opcode, data = await self.read_frame()                
-            #except (ValueError, EOFError) as ex:
+                fin, opcode, data = await self.read_frame()
+            # except (ValueError, EOFError) as ex:
             except Exception as ex:
                 await self.open(False)
                 return
@@ -217,13 +227,11 @@ class AsyncWebsocketClient:
                 # This is a continuation of a previous frame
                 raise NotImplementedError(opcode)
             else:
-                raise ValueError(opcode)            
+                raise ValueError(opcode)
 
     async def send(self, buf):
-
         if not await self.open():
             return
-
         if isinstance(buf, str):
             opcode = OP_TEXT
             buf = buf.encode('utf-8')
@@ -231,6 +239,4 @@ class AsyncWebsocketClient:
             opcode = OP_BYTES
         else:
             raise TypeError()
-
         self.write_frame(opcode, buf)
-    
