@@ -18,7 +18,7 @@ install_requires = ['uasyncio']
 
 setuptools.setup(
     name="micropython-async_websocket_client",
-    version="0.1.7",
+    version="0.1.8",
     description='Asynchronous websocket client for ESP32 controller.',
     long_description_content_type="text/markdown",
     long_description=README + '\n\n' + HISTORY,
@@ -34,5 +34,5 @@ setuptools.setup(
         "License :: OSI Approved :: Apache Software License",
         "Operating System :: OS Independent",
     ],
-    packages=["async_websocket_client"]    
+    packages=["async_websocket_client"]
 )
