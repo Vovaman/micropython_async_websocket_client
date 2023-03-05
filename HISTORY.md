@@ -1,3 +1,8 @@
+0.1.9
+-----
+Method `close()` is added and example project (see link above) is changed
+to demonstrate it.
+
 0.1.8
 -----
 Partial support for wss protocol is added.
