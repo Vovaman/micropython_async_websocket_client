@@ -7,7 +7,7 @@ to demonstrate it.
 -----
 Partial support for wss protocol is added.
 Author: [huytranle](https://github.com/huytranle)
-> :warning: **Disclaimer!** Server and client certificates verification
+> **Disclaimer!** Server and client certificates verification
 > is not supported in this version.
 > Waiting for new micropython release...
 
