@@ -35,14 +35,21 @@ class AsyncWebsocketClient:
         self._open = False
         self.delay_read = ms_delay_for_read
         self._lock_for_open = a.Lock()
+        self.sock = None
 
     async def open(self, new_val: bool = None):
         await self._lock_for_open.acquire()
         if new_val is not None:
+            if not new_val and self.sock:
+                self.sock.close()
+                self.sock = None
             self._open = new_val
         to_return = self._open
         self._lock_for_open.release()
         return to_return
+
+    async def close(self):
+        return await self.open(False)
 
     def urlparse(self, uri):
         """Parse ws or wss:// URLs"""
@@ -74,6 +81,8 @@ class AsyncWebsocketClient:
         return b
 
     async def handshake(self, uri, headers=[]):
+        if self.sock:
+            self.close()
 
         self.sock = socket.socket()
         self.uri = self.urlparse(uri)
@@ -83,7 +92,7 @@ class AsyncWebsocketClient:
         self.sock.setblocking(False)
         if self.uri.protocol == 'wss':
             self.sock = ussl.wrap_socket(self.sock)
-        await self.open(False)
+        # await self.open(False)
 
         def send_header(header, *args):
             self.sock.write(header % args + '\r\n')
