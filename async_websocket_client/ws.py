@@ -74,11 +74,17 @@ class AsyncWebsocketClient:
         return line
 
     async def a_read(self, size: int = None):
-        b = None
-        while b is None:
+        chunks = []
+        while True:
             b = self.sock.read(size)
             await a.sleep_ms(self.delay_read)
-        return b
+            if b:
+                if (size is None or len(b) == size):
+                    return b
+                chunks.append(b)
+                size -= len(b)
+                if size == 0:
+                    return b''.join(chunks)
 
     async def handshake(self, uri, headers=[]):
         if self.sock:
