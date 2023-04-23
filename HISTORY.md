@@ -1,3 +1,8 @@
+0.2.0
+-----
+Fix for big data packet.
+Author: [mutatrum](https://github.com/mutatrum)
+
 0.1.9
 -----
 Method `close()` is added and example project (see link above) is changed
