@@ -74,7 +74,10 @@ class AsyncWebsocketClient:
         return line
 
     async def a_read(self, size: int = None):
+        if size == 0:
+            return b''
         chunks = []
+        
         while True:
             b = self.sock.read(size)
             await a.sleep_ms(self.delay_read)
