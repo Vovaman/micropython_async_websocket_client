@@ -126,8 +126,7 @@ class AsyncWebsocketClient:
         line = await self.a_readline()
         header = (line)[:-2]
         if not header.startswith(b'HTTP/1.1 101 '):
-            return False
-            # probably need to skip or something?
+            raise Exception(header)
 
         # We don't (currently) need these headers
         # FIXME: should we check the return key?
