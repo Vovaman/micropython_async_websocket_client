@@ -6,6 +6,7 @@ from ucollections import namedtuple
 import ure as re
 import ustruct as struct
 import ussl
+
 # Opcodes
 OP_CONT = const(0x0)
 OP_TEXT = const(0x1)
@@ -25,10 +26,8 @@ CLOSE_TOO_BIG = const(1009)
 CLOSE_MISSING_EXTN = const(1010)
 CLOSE_BAD_CONDITION = const(1011)
 
-
 URL_RE = re.compile(r'(wss|ws)://([A-Za-z0-9-\.]+)(?:\:([0-9]+))?(/.+)?')
 URI = namedtuple('URI', ('protocol', 'hostname', 'port', 'path'))
-
 
 class AsyncWebsocketClient:
     def __init__(self, ms_delay_for_read: int = 5):
@@ -74,17 +73,29 @@ class AsyncWebsocketClient:
         return line
 
     async def a_read(self, size: int = None):
+        if size == 0:
+            return b''
         chunks = []
+
         while True:
             b = self.sock.read(size)
             await a.sleep_ms(self.delay_read)
-            if b:
-                if (size is None or len(b) == size):
-                    return b
-                chunks.append(b)
-                size -= len(b)
-                if size == 0:
-                    return b''.join(chunks)
+
+            # Continue reading if the socket returns None
+            if b is None: continue
+
+            # In some cases, the socket will return an empty bytes
+            # after PING or PONG frames, we need to ignore them.
+            if len(b) == 0: break
+
+            chunks.append(b)
+            size -= len(b)
+
+            # After reading the first chunk, we can break if size is None or 0
+            if size is None or size == 0: break
+
+        # Join all the chunks and return them
+        return b''.join(chunks)
 
     async def handshake(self, uri, headers=[], keyfile=None, certfile=None, cadata=None):
         if self.sock:
@@ -132,8 +143,7 @@ class AsyncWebsocketClient:
         line = await self.a_readline()
         header = (line)[:-2]
         if not header.startswith(b'HTTP/1.1 101 '):
-            return False
-            # probably need to skip or something?
+            raise Exception(header)
 
         # We don't (currently) need these headers
         # FIXME: should we check the return key?
@@ -144,7 +154,6 @@ class AsyncWebsocketClient:
         return await self.open(True)
 
     async def read_frame(self, max_size=None):
-
         # Frame header
         byte1, byte2 = struct.unpack('!BB', await self.a_read(2))
 
@@ -216,13 +225,12 @@ class AsyncWebsocketClient:
         self.sock.write(data)
 
     async def recv(self):
-        count = 0
         while await self.open():
-            count += 1
             try:
                 fin, opcode, data = await self.read_frame()
             # except (ValueError, EOFError) as ex:
             except Exception as ex:
+                print('Exception in recv while reading frame:', ex)
                 await self.open(False)
                 return
 
@@ -240,10 +248,17 @@ class AsyncWebsocketClient:
                 # Ignore this frame, keep waiting for a data frame
                 continue
             elif opcode == OP_PING:
-                # We need to send a pong frame
-                self.write_frame(OP_PONG, data)
-                # And then wait to receive
-                return
+                try:
+                    # We need to send a pong frame
+                    self.write_frame(OP_PONG, data)
+
+                    # And then continue to wait for a data frame
+                    continue
+                except Exception as ex:
+                    print('Error sending pong frame:', ex)
+                    # If sending the pong frame fails, close the connection
+                    await self.open(False)
+                    return
             elif opcode == OP_CONT:
                 # This is a continuation of a previous frame
                 raise NotImplementedError(opcode)
