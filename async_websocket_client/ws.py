@@ -86,7 +86,7 @@ class AsyncWebsocketClient:
                 if size == 0:
                     return b''.join(chunks)
 
-    async def handshake(self, uri, headers=[]):
+    async def handshake(self, uri, headers=[], keyfile=None, certfile=None, cadata=None):
         if self.sock:
             self.close()
 
@@ -97,7 +97,13 @@ class AsyncWebsocketClient:
         self.sock.connect(addr)
         self.sock.setblocking(False)
         if self.uri.protocol == 'wss':
-            self.sock = ussl.wrap_socket(self.sock)
+            self.sock = ussl.wrap_socket(
+                self.sock, server_side=False,
+                keyfile=keyfile, certfile=certfile,
+                cert_reqs=ussl.CERT_REQUIED,
+                cadata=cadata,
+                server_hostname=self.uri.hostname
+            )
         # await self.open(False)
 
         def send_header(header, *args):
