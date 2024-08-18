@@ -5,6 +5,7 @@ name = "pypi"
 
 [packages]
 twine = "*"
+pyelftools = "*"
 
 [dev-packages]
 

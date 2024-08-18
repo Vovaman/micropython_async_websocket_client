@@ -1,11 +1,11 @@
-import usocket as socket
-import uasyncio as a
-import ubinascii as binascii
-import urandom as random
-from ucollections import namedtuple
-import ure as re
-import ustruct as struct
-import ussl
+import socket as socket
+import asyncio as a
+import binascii as b
+import random as r
+from collections import namedtuple
+import re
+import struct
+import ssl
 
 # Opcodes
 OP_CONT = const(0x0)
@@ -108,10 +108,10 @@ class AsyncWebsocketClient:
         self.sock.connect(addr)
         self.sock.setblocking(False)
         if self.uri.protocol == 'wss':
-            self.sock = ussl.wrap_socket(
+            self.sock = ssl.wrap_socket(
                 self.sock, server_side=False,
                 keyfile=keyfile, certfile=certfile,
-                cert_reqs=ussl.CERT_REQUIED,
+                cert_reqs=ssl.CERT_REQUIED,
                 cadata=cadata,
                 server_hostname=self.uri.hostname
             )
@@ -121,7 +121,7 @@ class AsyncWebsocketClient:
             self.sock.write(header % args + '\r\n')
 
         # Sec-WebSocket-Key is 16 bytes of random base64 encoded
-        key = binascii.b2a_base64(bytes(random.getrandbits(8)
+        key = b.b2a_base64(bytes(r.getrandbits(8)
                                         for _ in range(16)))[:-1]
 
         send_header(b'GET %s HTTP/1.1', self.uri.path or '/')
@@ -217,7 +217,7 @@ class AsyncWebsocketClient:
             raise ValueError()
 
         if mask:  # Mask is 4 bytes
-            mask_bits = struct.pack('!I', random.getrandbits(32))
+            mask_bits = struct.pack('!I', r.getrandbits(32))
             self.sock.write(mask_bits)
             data = bytes(b ^ mask_bits[i % 4]
                          for i, b in enumerate(data))
