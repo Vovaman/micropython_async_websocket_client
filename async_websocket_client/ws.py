@@ -108,7 +108,7 @@ class AsyncWebsocketClient:
             self.sock = ssl.wrap_socket(
                 self.sock, server_side=False,
                 keyfile=keyfile, certfile=certfile,
-                cert_reqs=ssl.CERT_REQUIED,
+                cert_reqs=2, #ssl.CERT_REQUIED,
                 cadata=cadata,
                 server_hostname=self.uri.hostname
             )
