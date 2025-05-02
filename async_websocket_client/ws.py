@@ -1,4 +1,4 @@
-import socket as socket
+import socket
 import asyncio as a
 import binascii as b
 import random as r
@@ -104,9 +104,6 @@ class AsyncWebsocketClient:
         self.sock = socket.socket()
         self.uri = self.urlparse(uri)
         ai = socket.getaddrinfo(self.uri.hostname, self.uri.port)
-        addr = ai[0][4]
-        self.sock.connect(addr)
-        self.sock.setblocking(False)
         if self.uri.protocol == 'wss':
             self.sock = ssl.wrap_socket(
                 self.sock, server_side=False,
@@ -115,7 +112,10 @@ class AsyncWebsocketClient:
                 cadata=cadata,
                 server_hostname=self.uri.hostname
             )
-        # await self.open(False)
+
+        addr = ai[0][4]
+        self.sock.connect(addr)
+        self.sock.setblocking(False)
 
         def send_header(header, *args):
             self.sock.write(header % args + '\r\n')
