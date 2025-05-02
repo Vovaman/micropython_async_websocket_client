@@ -107,7 +107,7 @@ class AsyncWebsocketClient:
         if self.uri.protocol == 'wss':
             self.sock = ssl.wrap_socket(
                 self.sock, server_side=False,
-                keyfile=keyfile, certfile=certfile,
+                key=keyfile, cert=certfile,
                 cert_reqs=2, #ssl.CERT_REQUIED,
                 cadata=cadata,
                 server_hostname=self.uri.hostname
