@@ -6,8 +6,11 @@ name = "pypi"
 [packages]
 twine = "*"
 pyelftools = "*"
+micropy-cli = "*"
+esptool = "*"
+mpremote = "*"
 
 [dev-packages]
 
 [requires]
-python_version = "3.9"
+python_version = "3.10"
