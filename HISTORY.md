@@ -1,3 +1,9 @@
+0.3.0
+-----
+Full support for TLS.
+
+The installation method has also been changed.
+
 0.2.0
 -----
 Fix for big data packet.
