@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "micropython-async_websocket_client"
+version = "0.3.0"
+authors = [
+    {name = "Vladimir Badashkin", email = "bd_postbox1@mail.ru"},
+]
+description = "Asynchronous websocket client for ESP32 controller."
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+]
