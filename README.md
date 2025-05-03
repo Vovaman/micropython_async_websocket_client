@@ -1,4 +1,4 @@
-> :warning: This module is only for [micropython](https://micropython.org/)!
+> This module is only for [micropython](https://micropython.org/)!
 
 # micropython-async_websocket_client
 This module is designed for ESP32 (and other) controllers.
