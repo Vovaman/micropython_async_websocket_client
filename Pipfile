@@ -4,13 +4,17 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-twine = "*"
 pyelftools = "*"
 micropy-cli = "*"
 esptool = "*"
 mpremote = "*"
 
 [dev-packages]
+setuptools = ">=68.0.0"
+wheel = "*"
+build = "*"
+twine = ">=6.1.0"
+packaging = "==25.0"
 
 [requires]
 python_version = "3.10"

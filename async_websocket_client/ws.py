@@ -110,7 +110,6 @@ class AsyncWebsocketClient:
         self.sock.setblocking(False)
 
         if self.uri.protocol == 'wss':
-            print("1")
             with open(cafile, 'rb') as f:
                 cadata = f.read()
             self.sock = ssl.wrap_socket(
@@ -120,7 +119,6 @@ class AsyncWebsocketClient:
                 cadata=cadata,
                 server_hostname=self.uri.hostname
             )
-            print("2")
 
         def send_header(header, *args):
             self.sock.write(header % args + '\r\n')
