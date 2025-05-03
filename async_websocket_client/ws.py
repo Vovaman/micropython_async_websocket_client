@@ -97,7 +97,7 @@ class AsyncWebsocketClient:
         # Join all the chunks and return them
         return b''.join(chunks)
 
-    async def handshake(self, uri, headers=[], keyfile=None, certfile=None, cadata=None):
+    async def handshake(self, uri, headers=[], keyfile=None, certfile=None, cafile=None):
         if self.sock:
             self.close()
 
@@ -105,6 +105,9 @@ class AsyncWebsocketClient:
         self.uri = self.urlparse(uri)
         ai = socket.getaddrinfo(self.uri.hostname, self.uri.port)
         if self.uri.protocol == 'wss':
+            with open(cafile, 'rb') as f:
+                cadata = f.read()
+
             self.sock = ssl.wrap_socket(
                 self.sock, server_side=False,
                 key=keyfile, cert=certfile,
