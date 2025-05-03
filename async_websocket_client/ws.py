@@ -105,9 +105,10 @@ class AsyncWebsocketClient:
         self.uri = self.urlparse(uri)
         ai = socket.getaddrinfo(self.uri.hostname, self.uri.port)
         if self.uri.protocol == 'wss':
+            print("cafile: " + cafile)
             with open(cafile, 'rb') as f:
                 cadata = f.read()
-
+            print("loaded")
             self.sock = ssl.wrap_socket(
                 self.sock, server_side=False,
                 key=keyfile, cert=certfile,
@@ -115,6 +116,7 @@ class AsyncWebsocketClient:
                 cadata=cadata,
                 server_hostname=self.uri.hostname
             )
+            print("wrapped")
 
         addr = ai[0][4]
         self.sock.connect(addr)
