@@ -45,7 +45,7 @@ Development and tests were done based on [ESP32-20250415-v1.25.0.bin](https://mi
 >>> mip.install("github:Vovaman/micropython_async_websocket_client/async_websocket_client/ws.py")
 ```
 
-## Manual
+## Manually
 You have just copy ``ws.py`` file to ``/lib`` folder in controller.
 
 Example with ``mpremote``:
