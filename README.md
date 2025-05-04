@@ -26,6 +26,7 @@ This module is designed and tested on [ESP32S-WROOM-32](https://ru.wikipedia.org
 Development and tests were done based on [ESP32-20250415-v1.25.0.bin](https://micropython.org/resources/firmware/ESP32_GENERIC-20250415-v1.25.0.bin).
 
 # installation
+## Through network
 <details>
     <summary>Run this commands on your controller:</summary>
 
@@ -44,6 +45,17 @@ Development and tests were done based on [ESP32-20250415-v1.25.0.bin](https://mi
 >>> mip.install("github:Vovaman/micropython_async_websocket_client/async_websocket_client/ws.py")
 ```
 
+## Manual
+You have just copy ``ws.py`` file to ``/lib`` folder in controller.
+
+Example with ``mpremote``:
+
+```bash
+$ mpremote fs mkdir /lib
+$ mpremote fs cp async_websocket_client/ws.py :/lib/
+```
+
 All needed dependencies are in firmware.
+
 # example
 An example of how to use this module can be found in the https://github.com/Vovaman/example_async_websocket.
