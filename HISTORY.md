@@ -1,3 +1,7 @@
+0.3.1
+-----
+Info for manual installation.
+
 0.3.0
 -----
 Full support for TLS.
