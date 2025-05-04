@@ -59,3 +59,5 @@ All needed dependencies are in firmware.
 
 # example
 An example of how to use this module can be found in the https://github.com/Vovaman/example_async_websocket.
+
+Use this example instead of documentation.

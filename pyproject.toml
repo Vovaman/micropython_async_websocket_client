@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "micropython-async_websocket_client"
-version = "0.3.1"
+version = "0.3.2"
 authors = [
     {name = "Vladimir Badashkin", email = "bd_postbox1@mail.ru"},
 ]

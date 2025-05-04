@@ -1,3 +1,7 @@
+0.3.2
+-----
+CERT_NONE, CERT_OPTIONAL modes are added.
+
 0.3.1
 -----
 Info for manual installation.
