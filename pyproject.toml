@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "micropython-async_websocket_client"
-version = "0.3.2"
+version = "0.3.3"
 authors = [
     {name = "Vladimir Badashkin", email = "bd_postbox1@mail.ru"},
 ]
@@ -19,3 +19,4 @@ classifiers = [
 ]
 [project.urls]
 repository = 'https://github.com/Vovaman/micropython_async_websocket_client'
+documentation = 'https://github.com/Vovaman/example_async_websocket/'
