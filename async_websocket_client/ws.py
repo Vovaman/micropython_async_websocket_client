@@ -97,7 +97,7 @@ class AsyncWebsocketClient:
         # Join all the chunks and return them
         return b''.join(chunks)
 
-    async def handshake(self, uri, headers=[], keyfile=None, certfile=None, cafile=None):
+    async def handshake(self, uri, headers=[], keyfile=None, certfile=None, cafile=None, cert_reqs=0):
         if self.sock:
             self.close()
 
@@ -115,7 +115,7 @@ class AsyncWebsocketClient:
             self.sock = ssl.wrap_socket(
                 self.sock, server_side=False,
                 key=keyfile, cert=certfile,
-                cert_reqs=2, #ssl.CERT_REQUIED,
+                cert_reqs=cert_reqs, # 0 - NONE, 1 - OPTIONAL, 2 - REQUIED
                 cadata=cadata,
                 server_hostname=self.uri.hostname
             )

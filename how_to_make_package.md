@@ -1,3 +1,5 @@
+Delete previous versions first.
+
 # build package
 ```bash
 $ pipenv shell
