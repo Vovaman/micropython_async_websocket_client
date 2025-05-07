@@ -110,8 +110,10 @@ class AsyncWebsocketClient:
         self.sock.setblocking(False)
 
         if self.uri.protocol == 'wss':
-            with open(cafile, 'rb') as f:
-                cadata = f.read()
+            cadata = None
+            if not cafile is None:
+                with open(cafile, 'rb') as f:
+                    cadata = f.read()
             self.sock = ssl.wrap_socket(
                 self.sock, server_side=False,
                 key=keyfile, cert=certfile,
