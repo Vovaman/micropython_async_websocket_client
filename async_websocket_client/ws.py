@@ -47,7 +47,9 @@ class AsyncWebsocketClient:
         self._lock_for_open.release()
         return to_return
 
-    async def close(self):
+    async def close(self, code=None):
+        if code is not None:
+            print("Connection is closed. Code: ", code)
         return await self.open(False)
 
     def urlparse(self, uri):
@@ -182,7 +184,7 @@ class AsyncWebsocketClient:
             data = await self.a_read(length)
         except MemoryError:
             # We can't receive this many bytes, close the socket
-            self.close(code=CLOSE_TOO_BIG)
+            await self.close(code=CLOSE_TOO_BIG)
             # await self._stream.drain()
             return True, OP_CLOSE, None
 
