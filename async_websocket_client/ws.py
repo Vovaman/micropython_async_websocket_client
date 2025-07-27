@@ -36,7 +36,7 @@ class AsyncWebsocketClient:
         self._lock_for_open = a.Lock()
         self.sock = None
 
-    async def open(self, new_val: bool = None):
+    async def open(self, new_val: bool | None = None):
         await self._lock_for_open.acquire()
         if new_val is not None:
             if not new_val and self.sock:
@@ -72,14 +72,14 @@ class AsyncWebsocketClient:
 
         return line
 
-    async def a_read(self, size: int = None):
+    async def a_read(self, size: int | None = None):
         if size == 0:
             return b''
         chunks = []
 
         while True:
-            b = self.sock.read(size)
-            await a.sleep_ms(self.delay_read)
+            b = self.sock.read(size) # type: ignore
+            await a.sleep_ms(self.delay_read) # type: ignore
 
             # Continue reading if the socket returns None
             if b is None: continue
@@ -89,7 +89,7 @@ class AsyncWebsocketClient:
             if len(b) == 0: break
 
             chunks.append(b)
-            size -= len(b)
+            size -= len(b) # type: ignore
 
             # After reading the first chunk, we can break if size is None or 0
             if size is None or size == 0: break
@@ -99,45 +99,45 @@ class AsyncWebsocketClient:
 
     async def handshake(self, uri, headers=[], keyfile=None, certfile=None, cafile=None, cert_reqs=0):
         if self.sock:
-            self.close()
+            await self.close()
 
         self.sock = socket.socket()
         self.uri = self.urlparse(uri)
-        ai = socket.getaddrinfo(self.uri.hostname, self.uri.port)
+        ai = socket.getaddrinfo(self.uri.hostname, self.uri.port) # type: ignore
         addr = ai[0][4]
 
         self.sock.connect(addr)
         self.sock.setblocking(False)
 
-        if self.uri.protocol == 'wss':
+        if self.uri.protocol == 'wss': # type: ignore
             cadata = None
             if not cafile is None:
                 with open(cafile, 'rb') as f:
                     cadata = f.read()
             self.sock = ssl.wrap_socket(
                 self.sock, server_side=False,
-                key=keyfile, cert=certfile,
+                key=keyfile, cert=certfile, # type: ignore
                 cert_reqs=cert_reqs, # 0 - NONE, 1 - OPTIONAL, 2 - REQUIED
-                cadata=cadata,
-                server_hostname=self.uri.hostname
+                cadata=cadata, # type: ignore
+                server_hostname=self.uri.hostname # type: ignore
             )
 
         def send_header(header, *args):
-            self.sock.write(header % args + '\r\n')
+            self.sock.write(header % args + '\r\n') # type: ignore
 
         # Sec-WebSocket-Key is 16 bytes of random base64 encoded
         key = b.b2a_base64(bytes(r.getrandbits(8)
                                         for _ in range(16)))[:-1]
 
-        send_header(b'GET %s HTTP/1.1', self.uri.path or '/')
-        send_header(b'Host: %s:%s', self.uri.hostname, self.uri.port)
+        send_header(b'GET %s HTTP/1.1', self.uri.path or '/') # type: ignore
+        send_header(b'Host: %s:%s', self.uri.hostname, self.uri.port) # type: ignore
         send_header(b'Connection: Upgrade')
         send_header(b'Upgrade: websocket')
         send_header(b'Sec-WebSocket-Key: %s', key)
         send_header(b'Sec-WebSocket-Version: 13')
-        send_header(b'Origin: http://{hostname}:{port}'.format(
-            hostname=self.uri.hostname,
-            port=self.uri.port)
+        send_header(b'Origin: http://{hostname}:{port}'.format( # type: ignore
+            hostname=self.uri.hostname, # type: ignore
+            port=self.uri.port) # type: ignore
         )
 
         for key, value in headers:
