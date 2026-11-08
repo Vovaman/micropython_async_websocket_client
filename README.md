@@ -1,63 +1,72 @@
-> This module is only for [micropython](https://micropython.org/)!
+[![License Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+![MicroPython 1.25+](https://img.shields.io/badge/MicroPython-1.25%2B-green.svg)
+![ESP32](https://img.shields.io/badge/ESP32-supported-blue.svg)
+[![PyPI](https://img.shields.io/pypi/v/micropython-async_websocket_client.svg)](https://pypi.org/project/micropython-async_websocket_client/)
+
+> This module is only for [MicroPython](https://micropython.org/)!
 
 # micropython-async_websocket_client
-This module is designed for ESP32 (and other) controllers.
 
-Target: create and keep alive connection channel with websocket server.
+This module is designed for the ESP32 and other microcontrollers.
 
-You may send captured data from controlled devices through this channel to server and accept managing signals on your controller.
+It keeps a WebSocket connection to a server alive. You can send captured data from the attached devices to the server and receive control signals on the controller.
 
-This data channel works as background task while main control cycle is running too.
-The break of websocket channel doesn't corrupt main cycle of control.
+The channel runs as a background task while the main control loop is running. A dropped WebSocket connection does not stop that loop.
 
-Module supports TLS with both client and server certificates.
+The module supports TLS with both client and server certificates.
 
-This project based on:
+This project is based on:
 
 https://github.com/danni/uwebsockets
 
 https://github.com/peterhinch/micropython-async
 
-**My gratitudes to authors**.
+**Thanks to the authors.**
 
-# requirements
-This module is designed and tested on [ESP32S-WROOM-32](https://ru.wikipedia.org/wiki/%D0%A4%D0%B0%D0%B9%D0%BB:ESP32_Espressif_ESP-WROOM-32_Dev_Board.jpg).
+# Requirements
 
-Development and tests were done based on [ESP32-20250415-v1.25.0.bin](https://micropython.org/resources/firmware/ESP32_GENERIC-20250415-v1.25.0.bin).
+The module is designed and tested on the [ESP32-WROOM-32](https://ru.wikipedia.org/wiki/%D0%A4%D0%B0%D0%B9%D0%BB:ESP32_Espressif_ESP-WROOM-32_Dev_Board.jpg).
 
-# installation
-## Through network
+Development and tests on the device were done with [ESP32-20250415-v1.25.0.bin](https://micropython.org/resources/firmware/ESP32_GENERIC-20250415-v1.25.0.bin).
+
+The constructor still accepts `ms_delay_for_read`, so existing callers keep working. Socket reads wait until the controller reports data instead of sleeping for that interval.
+
+# Installation
+
+## Over the network
+
 <details>
-    <summary>Run this commands on your controller:</summary>
+    <summary>Prepare the board, then run the commands below on it.</summary>
 
-    You have to reflash your board with [micropython](https://micropython.org/).
-    Details are explained in https://github.com/Vovaman/start_ESP32_with_micropython.
-    You may use VSCode as explained in link above or use `picocom` tool (also explained) to connect your board and run python console (REPL) on it.
-    So, after you are in your board...
+    Flash the board with [MicroPython](https://micropython.org/).
+    The steps are described in https://github.com/Vovaman/start_ESP32_with_micropython.
+    You can use VS Code, as explained in that repository, or `picocom` to open the Python console (REPL).
 </details>
 
 ```python
 >>> import network
 >>> wifi = network.WLAN(network.STA_IF)
 >>> wifi.active(1)
->>> wifi.connect(<name_of_your_wifi_net>, <wifi_password>)
+>>> wifi.connect("wifi_name", "wifi_password")
 >>> import mip
 >>> mip.install("github:Vovaman/micropython_async_websocket_client/async_websocket_client/ws.py")
 ```
 
 ## Manually
-You have just copy ``ws.py`` file to ``/lib`` folder in controller.
 
-Example with ``mpremote``:
+Copy `ws.py` to the `/lib` directory on the controller.
+
+Example with `mpremote`:
 
 ```bash
 $ mpremote fs mkdir /lib
 $ mpremote fs cp async_websocket_client/ws.py :/lib/
 ```
 
-All needed dependencies are in firmware.
+If `/lib` already exists, skip `mkdir`. All required dependencies are included in the firmware.
 
-# example
-An example of how to use this module can be found in the https://github.com/Vovaman/example_async_websocket.
+# Example
 
-Use this example instead of documentation.
+A usage example is at https://github.com/Vovaman/example_async_websocket.
+
+Use that example as the documentation.
