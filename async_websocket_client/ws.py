@@ -1,11 +1,15 @@
-import socket
 import asyncio as a
-import binascii as b
-import random as r
-from collections import namedtuple
-import re
-import struct
-import ssl
+import binascii
+import random
+
+try:
+    from micropython import const, viper
+except ImportError:
+    viper = None
+
+    def const(value):
+        return value
+
 
 # Opcodes
 OP_CONT = const(0x0)
@@ -26,260 +30,361 @@ CLOSE_TOO_BIG = const(1009)
 CLOSE_MISSING_EXTN = const(1010)
 CLOSE_BAD_CONDITION = const(1011)
 
-URL_RE = re.compile(r'(wss|ws)://([A-Za-z0-9-\.]+)(?:\:([0-9]+))?(/.+)?')
-URI = namedtuple('URI', ('protocol', 'hostname', 'port', 'path'))
+# A short write copies at most one chunk into the stream buffer.
+_CHUNK = const(1024)
+# Header and payload of a small frame go out in one write.
+_ONE_WRITE = const(256)
+
+
+def apply_mask(buf, mask, length):
+    i = 0
+    while i < length:
+        buf[i] = buf[i] ^ mask[i & 3]
+        i += 1
+
+
+if viper is not None:
+    try:
+        @viper
+        def _apply_mask(buf, mask, length: int):
+            data = ptr8(buf)
+            bits = ptr8(mask)
+            i = 0
+            while i < length:
+                data[i] = data[i] ^ bits[i & 3]
+                i += 1
+
+        apply_mask = _apply_mask
+    except Exception:
+        pass
+
+
+class _URI:
+    __slots__ = ('protocol', 'hostname', 'port', 'path')
+
+    def __init__(self, protocol, hostname, port, path):
+        self.protocol = protocol
+        self.hostname = hostname
+        self.port = port
+        self.path = path
+
+
+def _frame_header(opcode, length):
+    first = 0x80 | opcode
+    if length < 126:
+        return bytes((first, 0x80 | length))
+    if length < 65536:
+        return bytes((first, 0x80 | 126, (length >> 8) & 0xff, length & 0xff))
+    return bytes((first, 0x80 | 127)) + length.to_bytes(8, 'big')
+
 
 class AsyncWebsocketClient:
-    def __init__(self, ms_delay_for_read: int = 5):
-        self._open = False
+    def __init__(self, ms_delay_for_read=5):
+        # Accepted so existing callers keep working. Reads wait on the socket.
         self.delay_read = ms_delay_for_read
-        self._lock_for_open = a.Lock()
+        self._open = False
+        self._stream = None
         self.sock = None
+        self.uri = None
+        self.max_size = None
+        self._write_lock = None
+        self._head = bytearray(2)
+        self._ext = bytearray(8)
+        self._mask_key = bytearray(4)
 
-    async def open(self, new_val: bool | None = None):
-        await self._lock_for_open.acquire()
-        if new_val is not None:
-            if not new_val and self.sock:
-                self.sock.close()
-                self.sock = None
-            self._open = new_val
-        to_return = self._open
-        self._lock_for_open.release()
-        return to_return
+    async def _acquire_write(self):
+        if self._write_lock is None:
+            self._write_lock = a.Lock()
+        await self._write_lock.acquire()
+
+    async def open(self, new_val=None):
+        if new_val is None:
+            return self._open
+        if new_val:
+            self._open = True
+            return True
+        self._open = False
+        stream = self._stream
+        self._stream = None
+        self.sock = None
+        if stream is not None:
+            await stream.wait_closed()
+        return False
 
     async def close(self, code=None):
-        if code is not None:
-            print("Connection is closed. Code: ", code)
+        if code is not None and self._open and self._stream is not None:
+            try:
+                await self.write_frame(OP_CLOSE, bytearray(code.to_bytes(2, 'big')))
+            except Exception:
+                pass
         return await self.open(False)
 
     def urlparse(self, uri):
-        """Parse ws or wss:// URLs"""
-        match = URL_RE.match(uri)
-        if match:
-            protocol, host, port, path = match.group(1), match.group(2), match.group(3), match.group(4)
+        if uri.startswith('wss://'):
+            protocol = 'wss'
+            rest = uri[6:]
+            port = 443
+        elif uri.startswith('ws://'):
+            protocol = 'ws'
+            rest = uri[5:]
+            port = 80
+        else:
+            raise ValueError('URL is invalid')
+        slash = rest.find('/')
+        if slash >= 0:
+            hostport = rest[:slash]
+            path = rest[slash:]
+        else:
+            hostport = rest
+            path = None
+        if not hostport:
+            raise ValueError('URL is invalid')
+        colon = hostport.rfind(':')
+        if colon >= 0:
+            host = hostport[:colon]
+            port = int(hostport[colon + 1:])
+        else:
+            host = hostport
+        if not host:
+            raise ValueError('URL is invalid')
+        return _URI(protocol, host, port, path)
 
-            if protocol not in ['ws', 'wss']:
-                raise ValueError('Scheme {} is invalid'.format(protocol))
+    async def _connect(self, host, port, ssl_ctx):
+        if ssl_ctx is None:
+            return await a.open_connection(host, port)
+        return await a.open_connection(
+            host, port, ssl=ssl_ctx, server_hostname=host)
 
-            if port is None:
-                port = (80, 443)[protocol == 'wss']
+    def _make_ssl_context(self, keyfile, certfile, cafile, cert_reqs):
+        import ssl
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        if cert_reqs is None:
+            cert_reqs = 0
+        ctx.verify_mode = cert_reqs
+        if certfile:
+            ctx.load_cert_chain(certfile, keyfile)
+        if cafile:
+            with open(cafile, 'rb') as handle:
+                ctx.load_verify_locations(cadata=handle.read())
+        return ctx
 
-            return URI(protocol, host, int(port), path)
+    def _http_request(self, uri, headers, key):
+        host = uri.hostname.encode('utf-8')
+        port = str(uri.port).encode('utf-8')
+        path = uri.path or '/'
+        lines = (
+            b'GET ' + path.encode('utf-8') + b' HTTP/1.1',
+            b'Host: ' + host + b':' + port,
+            b'Connection: Upgrade',
+            b'Upgrade: websocket',
+            b'Sec-WebSocket-Key: ' + key,
+            b'Sec-WebSocket-Version: 13',
+            b'Origin: http://' + host + b':' + port,
+        )
+        extra = []
+        for name, value in headers or ():
+            extra.append(
+                str(name).encode('utf-8') + b': ' + str(value).encode('utf-8'))
+        return b'\r\n'.join(lines + tuple(extra)) + b'\r\n\r\n'
+
+    async def _write_all(self, buf):
+        stream = self._stream
+        view = memoryview(buf)
+        offset = 0
+        length = len(view)
+        while offset < length:
+            end = offset + _CHUNK
+            if end > length:
+                end = length
+            stream.write(bytes(view[offset:end]))
+            await stream.drain()
+            offset = end
+
+    async def _read_into_n(self, buf, length):
+        view = memoryview(buf)
+        offset = 0
+        while offset < length:
+            got = await self._stream.readinto(view[offset:length])
+            if got is None:
+                continue
+            if got == 0:
+                raise EOFError
+            offset += got
+
+    async def _read_exact(self, length):
+        buf = bytearray(length)
+        await self._read_into_n(buf, length)
+        return buf
 
     async def a_readline(self):
-        line = None
-        while line is None:
-            line = self.sock.readline()
-            await a.sleep_ms(self.delay_read)
+        return await self._stream.readline()
 
-        return line
-
-    async def a_read(self, size: int | None = None):
-        if size == 0:
+    async def a_read(self, size=None):
+        if not size:
             return b''
-        chunks = []
+        return await self._read_exact(size)
 
-        while True:
-            b = self.sock.read(size) # type: ignore
-            await a.sleep_ms(self.delay_read) # type: ignore
-
-            # Continue reading if the socket returns None
-            if b is None: continue
-
-            # In some cases, the socket will return an empty bytes
-            # after PING or PONG frames, we need to ignore them.
-            if len(b) == 0: break
-
-            chunks.append(b)
-            size -= len(b) # type: ignore
-
-            # After reading the first chunk, we can break if size is None or 0
-            if size is None or size == 0: break
-
-        # Join all the chunks and return them
-        return b''.join(chunks)
-
-    async def handshake(self, uri, headers=[], keyfile=None, certfile=None, cafile=None, cert_reqs=0):
-        if self.sock:
-            await self.close()
-
-        self.sock = socket.socket()
-        self.uri = self.urlparse(uri)
-        ai = socket.getaddrinfo(self.uri.hostname, self.uri.port) # type: ignore
-        addr = ai[0][4]
-
-        self.sock.connect(addr)
-        self.sock.setblocking(False)
-
-        if self.uri.protocol == 'wss': # type: ignore
-            cadata = None
-            if not cafile is None:
-                with open(cafile, 'rb') as f:
-                    cadata = f.read()
-            self.sock = ssl.wrap_socket(
-                self.sock, server_side=False,
-                key=keyfile, cert=certfile, # type: ignore
-                cert_reqs=cert_reqs, # 0 - NONE, 1 - OPTIONAL, 2 - REQUIED
-                cadata=cadata, # type: ignore
-                server_hostname=self.uri.hostname # type: ignore
-            )
-
-        def send_header(header, *args):
-            self.sock.write(header % args + '\r\n') # type: ignore
-
-        # Sec-WebSocket-Key is 16 bytes of random base64 encoded
-        key = b.b2a_base64(bytes(r.getrandbits(8)
-                                        for _ in range(16)))[:-1]
-
-        send_header(b'GET %s HTTP/1.1', self.uri.path or '/') # type: ignore
-        send_header(b'Host: %s:%s', self.uri.hostname, self.uri.port) # type: ignore
-        send_header(b'Connection: Upgrade')
-        send_header(b'Upgrade: websocket')
-        send_header(b'Sec-WebSocket-Key: %s', key)
-        send_header(b'Sec-WebSocket-Version: 13')
-        send_header(b'Origin: http://{hostname}:{port}'.format( # type: ignore
-            hostname=self.uri.hostname, # type: ignore
-            port=self.uri.port) # type: ignore
-        )
-
-        for key, value in headers:
-            send_header(b'%s: %s', key, value)
-
-        send_header(b'')
-
-        line = await self.a_readline()
-        header = (line)[:-2]
-        if not header.startswith(b'HTTP/1.1 101 '):
-            raise Exception(header)
-
-        # We don't (currently) need these headers
-        # FIXME: should we check the return key?
-        while header:
-            line = await self.a_readline()
-            header = (line)[:-2]
-
+    async def handshake(
+            self, uri, headers=None, keyfile=None, certfile=None,
+            cafile=None, cert_reqs=0):
+        parsed = self.urlparse(uri)
+        if self._stream is not None or self._open:
+            await self.open(False)
+        self.uri = parsed
+        try:
+            ssl_ctx = None
+            if parsed.protocol == 'wss':
+                ssl_ctx = self._make_ssl_context(
+                    keyfile, certfile, cafile, cert_reqs)
+            _reader, writer = await self._connect(
+                parsed.hostname, parsed.port, ssl_ctx)
+            self._stream = writer
+            self.sock = getattr(writer, 's', None)
+            key_raw = bytearray(16)
+            index = 0
+            while index < 16:
+                key_raw[index] = random.getrandbits(8)
+                index += 1
+            key = binascii.b2a_base64(key_raw)[:-1]
+            await self._write_all(self._http_request(parsed, headers, key))
+            line = await self._stream.readline()
+            header = line[:-2]
+            if not header.startswith(b'HTTP/1.1 101 '):
+                raise Exception(header)
+            while header:
+                line = await self._stream.readline()
+                header = line[:-2]
+        except Exception:
+            try:
+                await self.open(False)
+            except Exception:
+                pass
+            raise
         return await self.open(True)
 
     async def read_frame(self, max_size=None):
-        # Frame header
-        byte1, byte2 = struct.unpack('!BB', await self.a_read(2))
-
-        # Byte 1: FIN(1) _(1) _(1) _(1) OPCODE(4)
+        await self._read_into_n(self._head, 2)
+        byte1 = self._head[0]
+        byte2 = self._head[1]
         fin = bool(byte1 & 0x80)
         opcode = byte1 & 0x0f
-
-        # Byte 2: MASK(1) LENGTH(7)
-        mask = bool(byte2 & (1 << 7))
+        masked = bool(byte2 & 0x80)
         length = byte2 & 0x7f
-
-        if length == 126:  # Magic number, length header is 2 bytes
-            length, = struct.unpack('!H', await self.a_read(2))
-        elif length == 127:  # Magic number, length header is 8 bytes
-            length, = struct.unpack('!Q', await self.a_read(8))
-
-        if mask:  # Mask is 4 bytes
-            mask_bits = await self.a_read(4)
-
-        try:
-            data = await self.a_read(length)
-        except MemoryError:
-            # We can't receive this many bytes, close the socket
-            await self.close(code=CLOSE_TOO_BIG)
-            # await self._stream.drain()
+        if length == 126:
+            await self._read_into_n(self._ext, 2)
+            length = (self._ext[0] << 8) | self._ext[1]
+        elif length == 127:
+            await self._read_into_n(self._ext, 8)
+            # RFC 6455: the highest bit of a 64-bit length is reserved.
+            if self._ext[0] & 0x80:
+                await self.close(CLOSE_TOO_BIG)
+                return True, OP_CLOSE, None
+            length = int.from_bytes(self._ext, 'big')
+        limit = self.max_size if max_size is None else max_size
+        if limit is not None and length > limit:
+            await self.close(CLOSE_TOO_BIG)
             return True, OP_CLOSE, None
-
-        if mask:
-            data = bytes(b ^ mask_bits[i % 4]
-                         for i, b in enumerate(data))
-
+        if masked:
+            await self._read_into_n(self._mask_key, 4)
+        if length:
+            try:
+                data = bytearray(length)
+            except MemoryError:
+                await self.close(CLOSE_TOO_BIG)
+                return True, OP_CLOSE, None
+            await self._read_into_n(data, length)
+            if masked:
+                apply_mask(data, self._mask_key, length)
+        else:
+            data = bytearray()
         return fin, opcode, data
 
-    def write_frame(self, opcode, data=b''):
-        fin = True
-        mask = True  # messages sent by client are masked
+    async def write_frame(self, opcode, data=b'', undo=False):
+        if not isinstance(data, bytearray):
+            data = bytearray(data)
+            undo = False
+        await self._acquire_write()
+        try:
+            mask_bits = random.getrandbits(32).to_bytes(4, 'big')
+            apply_mask(data, mask_bits, len(data))
+            try:
+                prefix = _frame_header(opcode, len(data)) + mask_bits
+                if len(data) <= _ONE_WRITE:
+                    await self._write_all(prefix + data)
+                else:
+                    await self._write_all(prefix)
+                    if data:
+                        await self._write_all(data)
+            finally:
+                if undo:
+                    apply_mask(data, mask_bits, len(data))
+        finally:
+            self._write_lock.release()
 
-        length = len(data)
-
-        # Frame header
-        # Byte 1: FIN(1) _(1) _(1) _(1) OPCODE(4)
-        byte1 = 0x80 if fin else 0
-        byte1 |= opcode
-
-        # Byte 2: MASK(1) LENGTH(7)
-        byte2 = 0x80 if mask else 0
-
-        if length < 126:  # 126 is magic value to use 2-byte length header
-            byte2 |= length
-            self.sock.write(struct.pack('!BB', byte1, byte2))
-
-        elif length < (1 << 16):  # Length fits in 2-bytes
-            byte2 |= 126  # Magic code
-            self.sock.write(struct.pack('!BBH', byte1, byte2, length))
-
-        elif length < (1 << 64):
-            byte2 |= 127  # Magic code
-            self.sock.write(struct.pack('!BBQ', byte1, byte2, length))
-
-        else:
-            raise ValueError()
-
-        if mask:  # Mask is 4 bytes
-            mask_bits = struct.pack('!I', r.getrandbits(32))
-            self.sock.write(mask_bits)
-            data = bytes(b ^ mask_bits[i % 4]
-                         for i, b in enumerate(data))
-
-        self.sock.write(data)
+    def _payload_too_big(self, size):
+        return self.max_size is not None and size > self.max_size
 
     async def recv(self):
-        while await self.open():
+        message = None
+        message_op = None
+        while self._open:
             try:
-                fin, opcode, data = await self.read_frame()
-            # except (ValueError, EOFError) as ex:
-            except Exception as ex:
-                print('Exception in recv while reading frame:', ex)
+                fin, opcode, data = await self.read_frame(self.max_size)
+            except Exception:
                 await self.open(False)
-                return
-
-            if not fin:
-                raise NotImplementedError()
-
-            if opcode == OP_TEXT:
-                return data.decode('utf-8')
-            elif opcode == OP_BYTES:
-                return data
-            elif opcode == OP_CLOSE:
+                return None
+            if opcode == OP_CLOSE or data is None:
                 await self.open(False)
-                return
-            elif opcode == OP_PONG:
-                # Ignore this frame, keep waiting for a data frame
+                return None
+            if opcode == OP_PONG:
                 continue
-            elif opcode == OP_PING:
+            if opcode == OP_PING:
                 try:
-                    # We need to send a pong frame
-                    self.write_frame(OP_PONG, data)
-
-                    # And then continue to wait for a data frame
-                    continue
-                except Exception as ex:
-                    print('Error sending pong frame:', ex)
-                    # If sending the pong frame fails, close the connection
+                    await self.write_frame(OP_PONG, data)
+                except Exception:
                     await self.open(False)
-                    return
-            elif opcode == OP_CONT:
-                # This is a continuation of a previous frame
-                raise NotImplementedError(opcode)
+                    return None
+                continue
+            if opcode == OP_CONT:
+                if message_op is None:
+                    await self.close(CLOSE_PROTOCOL_ERROR)
+                    return None
+                if self._payload_too_big(len(message) + len(data)):
+                    await self.close(CLOSE_TOO_BIG)
+                    return None
+                message.extend(data)
+            elif opcode == OP_TEXT or opcode == OP_BYTES:
+                if message_op is not None:
+                    await self.close(CLOSE_PROTOCOL_ERROR)
+                    return None
+                message_op = opcode
+                message = data
             else:
                 raise ValueError(opcode)
+            if fin:
+                payload = message
+                op = message_op
+                message = None
+                message_op = None
+                if op == OP_TEXT:
+                    return payload.decode('utf-8')
+                return payload
+        return None
 
     async def send(self, buf):
-        if not await self.open():
+        if not self._open:
             return
+        undo = False
         if isinstance(buf, str):
             opcode = OP_TEXT
-            buf = buf.encode('utf-8')
+            data = bytearray(buf.encode('utf-8'))
+        elif isinstance(buf, bytearray):
+            opcode = OP_BYTES
+            data = buf
+            undo = True
         elif isinstance(buf, bytes):
             opcode = OP_BYTES
+            data = bytearray(buf)
         else:
             raise TypeError()
-        self.write_frame(opcode, buf)
+        await self.write_frame(opcode, data, undo)
